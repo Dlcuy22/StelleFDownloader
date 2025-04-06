@@ -1,8 +1,9 @@
 const blessed = require('blessed');
 const axios = require('axios');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const path = require('path');
+const url = require('url');
 
 // Create UI screen
 const screen = blessed.screen({
@@ -126,6 +127,43 @@ const list = blessed.list({
   hidden: true
 });
 
+// Progress bar for download
+const progressBar = blessed.progressbar({
+  parent: screen,
+  top: 18,
+  left: 'center',
+  width: '80%',
+  height: 3,
+  label: ' Download Progress ',
+  border: 'line',
+  style: {
+    fg: 'blue',
+    bg: 'black',
+    bar: {
+      bg: 'green'
+    },
+    border: { fg: 'white' }
+  },
+  filled: 0,
+  hidden: true
+});
+
+// Download info
+const downloadInfo = blessed.box({
+  parent: screen,
+  top: 22,
+  left: 'center',
+  width: '80%',
+  height: 3,
+  content: '',
+  align: 'center',
+  valign: 'middle',
+  style: {
+    fg: 'white'
+  },
+  hidden: true
+});
+
 // Help text at bottom
 const helpText = blessed.text({
   parent: screen,
@@ -143,6 +181,81 @@ function showStatus(message, fg = 'yellow') {
   statusBox.style.fg = fg;
   statusBox.show();
   screen.render();
+}
+
+// Extract filename from URL
+function getFilenameFromUrl(rawUrl) {
+  try {
+    // Parse the URL
+    const parsedUrl = new URL(rawUrl);
+    // Get the pathname
+    const pathname = parsedUrl.pathname;
+    // Get the last segment of the path
+    const segments = pathname.split('/');
+    const lastSegment = segments[segments.length - 1];
+    
+    // If we have a filename with extension
+    if (lastSegment && lastSegment.includes('.')) {
+      return decodeURIComponent(lastSegment);
+    }
+    
+    // If no valid filename found in the URL
+    return null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// Download file with progress
+function downloadWithProgress(url, outFile) {
+  return new Promise((resolve, reject) => {
+    // Show progress elements
+    progressBar.show();
+    downloadInfo.show();
+    downloadInfo.content = `Downloading to: ${path.basename(outFile)}`;
+    screen.render();
+    
+    // Use curl with progress option
+    const curl = spawn('curl', [
+      '-L',              // Follow redirects
+      '-#',              // Show progress as bar
+      '-o', outFile,     // Output file
+      url                // URL to download
+    ]);
+    
+    curl.stderr.on('data', (data) => {
+      const output = data.toString();
+      // Parse progress percentage from curl output
+      const match = output.match(/(\d+\.\d+)%/);
+      if (match && match[1]) {
+        const percentage = parseFloat(match[1]);
+        progressBar.setProgress(percentage);
+        screen.render();
+      }
+    });
+    
+    curl.on('close', (code) => {
+      if (code === 0) {
+        progressBar.setProgress(100);
+        downloadInfo.content = `Download complete: ${path.basename(outFile)}`;
+        downloadInfo.style.fg = 'green';
+        screen.render();
+        resolve();
+      } else {
+        downloadInfo.content = `Download failed with code: ${code}`;
+        downloadInfo.style.fg = 'red';
+        screen.render();
+        reject(new Error(`Download failed with code: ${code}`));
+      }
+    });
+    
+    curl.on('error', (err) => {
+      downloadInfo.content = `Download error: ${err.message}`;
+      downloadInfo.style.fg = 'red';
+      screen.render();
+      reject(err);
+    });
+  });
 }
 
 submitBtn.on('press', () => form.submit());
@@ -171,39 +284,80 @@ form.on('submit', async (data) => {
     const links = res.data.links;
     const qualities = Object.keys(links);
     
+    // Store original video title if available
+    const videoTitle = res.data.title || null;
+    
     list.setItems(qualities);
     list.show();
     statusBox.hide();
     screen.render();
 
-    list.once('select', (item, index) => {
+    list.once('select', async (item, index) => {
       const quality = qualities[index];
       // Remove backslashes that might be escaping the URL incorrectly
       const rawUrl = links[quality]
         .replace(/\\\\/g, '\\')
         .replace(/\\\//g, '/')
         .replace(/^"(.*)"$/, '$1'); // Remove surrounding quotes if present
-      
-      // Create a safe filename from the quality
-      const sanitizedQuality = quality.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-      const outFile = path.join(process.cwd(), `video_${sanitizedQuality}.mp4`);
+          
+          function sanitizeFilename(name) {
+            return name.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
+          }
+          
+          function trimToLimit(baseName, maxLength) {
+            if (baseName.length > maxLength) {
+              return baseName.substring(0, maxLength);
+            }
+            return baseName;
+          }
 
-      // Show status before starting download
-      screen.destroy();
-      console.log(`Downloading ${quality}...`);
-      console.log(`URL: ${rawUrl}`);
-      console.log(`Saving to: ${outFile}`);
+      // Try to get original filename from URL
+      let filename = getFilenameFromUrl(rawUrl);
       
-      // Use a more reliable download method with proper error handling
-      const curlCommand = `curl -L "${rawUrl}" -o "${outFile}"`;
-      exec(curlCommand, (err, stdout, stderr) => {
-        if (err) {
-          console.error('Download failed:', err.message);
-          console.error('Command output:', stderr);
-          return;
-        }
-        console.log('Download finished successfully:', outFile);
-      });
+      // If no filename from URL, use video title if available
+      if (!filename && videoTitle) {
+        filename = `${videoTitle.replace(/[^\w\s-]/g, '')}_${quality}.mp4`;
+      }
+      
+      // If still no filename, fall back to quality-based name
+      if (!filename) {
+        const sanitizedQuality = quality.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        filename = `video_${sanitizedQuality}.mp4`;
+      }
+      
+      // Ensure filename has proper extension
+      if (!filename.toLowerCase().endsWith('.mp4')) {
+        filename += '.mp4';
+      }
+      const baseName = filename.replace(/\.mp4$/i, '');
+      const prefix = 'StelleFDown_';
+
+      const maxTotalLength = 25;
+      const trimmedBase = trimToLimit(baseName, maxTotalLength - prefix.length);
+      filename = `${prefix}${trimmedBase}.mp4`;
+      
+      const outFile = path.join(process.cwd(), filename);
+      
+      showStatus(`Preparing to download: ${filename}`, 'blue');
+      
+      try {
+        await downloadWithProgress(rawUrl, outFile);
+        
+        // Leave UI open for 2 seconds to show completion
+        setTimeout(() => {
+          screen.destroy();
+          console.log(`\nDownload complete: ${outFile}`);
+          process.exit(0);
+        }, 2000);
+      } catch (err) {
+        showStatus(`Download failed: ${err.message}`, 'red');
+        // Keep UI open for error message
+        setTimeout(() => {
+          screen.destroy();
+          console.error(`\nDownload failed: ${err.message}`);
+          process.exit(1);
+        }, 5000);
+      }
     });
 
     list.focus();

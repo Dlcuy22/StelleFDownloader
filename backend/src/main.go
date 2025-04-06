@@ -53,10 +53,10 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if sd := downloader.GetSDLink(html); sd != "" {
-		resp.Links["Download Low Quality"] = sd + "&dl=1"
+		resp.Links["Download Low Quality(360p)"] = sd + "&dl=1"
 	}
 	if hd := downloader.GetHDLink(html); hd != "" {
-		resp.Links["Download High Quality"] = hd + "&dl=1"
+		resp.Links["Download High Quality(720p)"] = hd + "&dl=1"
 	}
 
 	json.NewEncoder(w).Encode(resp)
