@@ -1,4 +1,3 @@
-<!-- App.vue -->
 <template>
   <div id="app">
     <Main />
@@ -6,12 +5,12 @@
 </template>
 
 <script>
-import Main from './components/Main.vue'; // Import the component
+import Main from './components/Main.vue'; 
 
 export default {
   name: 'App',
   components: {
-    Main, // Register the component
+    Main, 
   },
 };
 </script>
@@ -22,10 +21,12 @@ export default {
 html, body, #app {
   margin: 0;
   padding: 0;
-  margin: 0;
-  padding: 0;
   height: 100%;
-  background-color: #1a1a1a; 
-  overflow: hidden;
+  background-color: #1a1a1a;
+  overflow-y: auto;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 </style>

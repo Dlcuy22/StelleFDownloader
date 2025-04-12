@@ -21,8 +21,10 @@ type DownloadResponse struct {
 }
 
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
-	// Allow CORS for local frontend testing
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// Set CORS headers for the response
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000") // your frontend origin
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("Content-Type", "application/json")
 
 	var req DownloadRequest
