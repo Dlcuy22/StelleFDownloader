@@ -24,3 +24,4 @@ logs
 .env.*
 !.env.example
 backend/src/stelleFbackend
+frontend/webui/serverFront.tar.gz
