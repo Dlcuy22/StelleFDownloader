@@ -59,13 +59,13 @@ const handleDownload = async () => {
   availableLinks.value = null
 
   try {
-    const res = await fetch('https://dev.esempe.fun:8443/api/download', {
+    const res = await fetch('http://localhost:8080/api/download', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ url: url.value }),
-    }) // this is a free server but you can change the api by your own server.
+    })
 
     const data = await res.json()
 
