@@ -59,7 +59,7 @@ const handleDownload = async () => {
   availableLinks.value = null
 
   try {
-    const res = await fetch('http://dev.esempe.fun:8080/api/download', {
+    const res = await fetch('https://dev.esempe.fun:8443/api/download', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
